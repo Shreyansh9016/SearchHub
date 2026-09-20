@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: searchhub
+      POSTGRES_PASSWORD: searchhub
+      POSTGRES_DB: searchhub
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U searchhub"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://searchhub:searchhub@postgres:5432/searchhub
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-in-production}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "python -m scripts.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  web:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
