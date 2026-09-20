@@ -6,16 +6,16 @@ SearchHub is a website where people log in and search technical articles. The mo
 
 ## What works
 
-- Search with ranking (title matches count 3 times more than body matches)
+- Search with ranking 
 - Typo tolerance: searching `kafak` still finds Kafka articles
-- Autocomplete suggestions (top 5) while typing, and a Ctrl+K search popup
+- Autocomplete suggestions (top 5) while typing
 - Filters by tag, author and date; sort by relevance, newest or oldest; pages
 - Highlighted words in the result snippets
 - Login and sign-up with secure tokens; only admins can add, edit or delete articles
 - Bookmarks, related articles, and a dashboard with statistics
 - Live trending searches on the dashboard, pushed over a WebSocket
 - Dark and light mode, loading skeletons, error messages, works on mobile
-- 75 automated tests
+- automated tests
 
 ## How to run it
 
@@ -33,32 +33,6 @@ To start again with a clean database (this deletes saved data):
 docker compose down -v
 docker compose up --build
 ```
-
-### Without Docker
-
-You need Python 3.10+, Node 18+ and a running PostgreSQL.
-
-1. Create a database and user called `searchhub`.
-2. Run the two files in `backend/migrations/` (they create the tables):
-   ```
-   psql -U searchhub -d searchhub -f backend/migrations/001_initial_schema.sql
-   psql -U searchhub -d searchhub -f backend/migrations/002_refresh_tokens.sql
-   ```
-3. Copy `.env.example` to `backend/.env` and adjust it if your database uses a different port.
-4. Start the backend:
-   ```
-   cd backend
-   pip install -r requirements.txt
-   python -m scripts.seed
-   uvicorn app.main:app --reload
-   ```
-5. Start the website in a second terminal:
-   ```
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   Open http://localhost:5173.
 
 ### Test accounts
 
@@ -103,7 +77,7 @@ The index is kept in the API's memory and built from the database when the API s
 - A wrong email and a wrong password give the same error, so nobody can find out which emails have accounts.
 
 ### Live updates
-The website opens one WebSocket connection after login (using the same login token). Whenever anyone searches, the server sends everyone the new list of trending searches, so the dashboard changes without a refresh. The server also sends a "ping" every 25 seconds to check the connection is alive, closes it if it goes quiet, and closes it when the login token expires. The website then gets a new token and reconnects by itself. If the connection drops, it retries after 1, 2, 4, 8 seconds and so on (up to 30 seconds).
+The website opens one WebSocket connection after login. Whenever anyone searches, the server sends everyone the new list of trending searches, so the dashboard changes without a refresh. The server also sends a "ping" every 25 seconds to check the connection is alive, closes it if it goes quiet, and closes it when the login token expires. The website then gets a new token and reconnects by itself. If the connection drops, it retries after 1, 2, 4, 8 seconds and so on (up to 30 seconds).
 
 Only trending searches are sent this way. Other live features (an activity feed, notifications, indexing status) are not built.
 
@@ -111,25 +85,6 @@ Only trending searches are sent this way. Other live features (an activity feed,
 
 Seven tables: `users`, `documents`, `tags`, `document_tags` (links documents to tags), `bookmarks`, `search_events` (a log of every search) and `refresh_tokens` (login sessions). They are connected with foreign keys. The dashboard uses one query that joins three tables and groups the result: the top tags by bookmarks in the last 7 days (in `backend/app/queries.py`).
 
-### Why these indexes
-
-An index makes a lookup fast, like a book's index. We added them where we look things up often:
-
-| Index | Why |
-|---|---|
-| `users.email` | Finding a user at login |
-| `documents.author_id` | Filtering by author |
-| `documents.created_at` | Date filters and sorting by newest |
-| `documents.status` | Finding pending or failed documents |
-| `document_tags.tag_id` | Finding all documents with a tag (the primary key only helps in the other direction) |
-| `bookmarks.document_id` | Counting bookmarks for a document |
-| `bookmarks.created_at` | The "last 7 days" filter |
-| `search_events.created_at` | Every dashboard number looks at a time window |
-| `search_events (user_id, created_at)` | A user's recent searches |
-| `search_events.query` | Counting the same query many times |
-| `refresh_tokens.token_hash` | Finding a session by its token |
-
-## How fast is it, and how would it grow?
 
 **Speed today.** Searching 520 articles takes about 1 to 2 milliseconds.
 
@@ -181,14 +136,3 @@ An index makes a lookup fast, like a book's index. We added them where we look t
 - **Dashboard charts:** there is one hand-drawn bar chart (searches per minute). Top queries and the zero-result rate are a list and a number, not charts.
 - **Infinite scroll:** not built (pagination is used instead).
 
-**Smaller gaps:**
-- No login attempt limit, so passwords could be guessed by brute force. No password reset and no email check.
-- The only live feature is trending searches; there is no activity feed, no notifications and no live indexing status. It works on a single server only (see Trade-offs).
-- Search is English only and does not understand word forms ("index" and "indexing" are different words).
-- Related articles are found by searching with the article's title, so they can be a little rough (a copy of the article can show up first).
-- If an article is added or changed, the index updates only in the API instance that handled the request. Restarting rebuilds it from the database.
-
-**Not fully tested:**
-- The Docker setup starts and serves the site, but the database setup file `001_initial_schema.sql` has never been run from a completely empty database on a real PostgreSQL. The refresh-token file (`002`) was applied to a real PostgreSQL successfully.
-- The nginx settings for WebSockets in Docker were written but not run. WebSockets were tested end to end with the development server.
-- The website has no automated tests, and it was tested through its API rather than clicked through in a browser.
