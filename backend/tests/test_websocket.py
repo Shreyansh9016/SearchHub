@@ -11,7 +11,7 @@ from app.config import settings
 from app.models import Document, Tag, User
 from app.search.loader import build_engine
 from app.security import create_access_token
-from tests.conftest import ADMIN_EMAIL, USER_EMAIL, auth_headers
+from tests.conftest import ADMIN_EMAIL, USER_EMAIL
 
 TITLE = "Redis Streams Explained"
 
@@ -109,48 +109,22 @@ def test_connection_is_closed_when_the_access_token_expires(live, db_session):
     assert exc.value.code == 4401
 
 
-def test_search_pushes_trending_to_connected_users(live, db_session, stack):
+def test_search_pushes_trending_to_every_connected_user(live, db_session, stack):
+    user_ws = open_socket(stack, live, db_session, USER_EMAIL)
+    admin_ws = open_socket(stack, live, db_session, ADMIN_EMAIL)
+    live.get("/search", params={"q": "redis"})
+    expected = {"type": "trending", "queries": [{"query": "redis", "count": 1}]}
+    assert user_ws.receive_json() == expected
+    assert admin_ws.receive_json() == expected
+    live.get("/search", params={"q": "redis"})
+    assert user_ws.receive_json()["queries"] == [{"query": "redis", "count": 2}]
+
+
+def test_bookmarking_does_not_push_anything(live, db_session, stack):
     ws = open_socket(stack, live, db_session)
-    live.get("/search", params={"q": "redis"})
-    assert ws.receive_json() == {"type": "trending", "queries": [{"query": "redis", "count": 1}]}
-
-
-def test_bookmark_pushes_activity_feed_to_everyone(live, db_session, stack):
-    user_ws = open_socket(stack, live, db_session, USER_EMAIL)
-    admin_ws = open_socket(stack, live, db_session, ADMIN_EMAIL)
     assert live.put("/documents/1/bookmark").status_code == 200
-    for ws in (user_ws, admin_ws):
-        message = ws.receive_json()
-        assert message["type"] == "activity"
-        assert message["message"] == f"Someone bookmarked {TITLE}"
-        assert message["document_id"] == 1
-
-    live.put("/documents/1/bookmark")
     live.get("/search", params={"q": "redis"})
-    assert user_ws.receive_json()["type"] == "trending"
-
-
-def test_updating_a_document_notifies_only_users_who_bookmarked_it(live, db_session, stack):
-    user_ws = open_socket(stack, live, db_session, USER_EMAIL)
-    admin_ws = open_socket(stack, live, db_session, ADMIN_EMAIL)
-    live.put("/documents/1/bookmark")
-    assert user_ws.receive_json()["type"] == "activity"
-    assert admin_ws.receive_json()["type"] == "activity"
-
-    admin_headers = auth_headers(db_session, ADMIN_EMAIL)
-    response = live.put(
-        "/documents/1", json={"title": TITLE, "body": "Rewritten body.", "tags": ["redis"]}, headers=admin_headers
-    )
-    assert response.status_code == 200
-    assert user_ws.receive_json() == {
-        "type": "notification",
-        "message": f'"{TITLE}" was updated',
-        "document_id": 1,
-    }
-
-    live.get("/search", params={"q": "redis"})
-    assert user_ws.receive_json()["type"] == "trending"
-    assert admin_ws.receive_json()["type"] == "trending"
+    assert ws.receive_json()["type"] == "trending"
 
 
 def test_no_broadcast_work_without_listeners(live, db_session):

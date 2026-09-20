@@ -677,12 +677,6 @@ kbd {
   }
 }
 
-.activity-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 @media (max-width: 820px) {
   .layout-2col,
   .layout-2col.reverse {

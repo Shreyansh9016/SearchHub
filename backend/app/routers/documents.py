@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -9,7 +9,6 @@ from app.db import get_db
 from app.deps import get_current_user, require_admin
 from app.models import Bookmark, Document, Tag, User
 from app.queries import top_tags_by_bookmarks
-from app.realtime import activity_message, manager, notification_message
 from app.routers.search import get_engine
 from app.search.engine import SearchEngine
 
@@ -101,9 +100,8 @@ def create_document(
 def update_document(
     doc_id: int,
     body: DocumentIn,
-    background: BackgroundTasks,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    _: User = Depends(require_admin),
     engine: SearchEngine = Depends(get_engine),
 ):
     doc = load_document(db, doc_id)
@@ -114,11 +112,6 @@ def update_document(
     db.commit()
     db.refresh(doc)
     sync_index(engine, doc)
-    watchers = [
-        uid for uid in db.scalars(select(Bookmark.user_id).where(Bookmark.document_id == doc.id)) if uid != admin.id
-    ]
-    if watchers:
-        background.add_task(manager.send_to_users, watchers, notification_message(doc.title, doc.id))
     return saved(doc)
 
 
@@ -162,17 +155,11 @@ def get_document(
 
 
 @router.put("/documents/{doc_id}/bookmark", response_model=BookmarkState)
-def add_bookmark(
-    doc_id: int,
-    background: BackgroundTasks,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    doc = load_document(db, doc_id)
+def add_bookmark(doc_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    load_document(db, doc_id)
     if db.get(Bookmark, (user.id, doc_id)) is None:
         db.add(Bookmark(user_id=user.id, document_id=doc_id))
         db.commit()
-        background.add_task(manager.broadcast, activity_message(doc.title, doc.id))
     return BookmarkState(document_id=doc_id, bookmarked=True)
 
 

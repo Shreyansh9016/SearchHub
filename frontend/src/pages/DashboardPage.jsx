@@ -58,22 +58,6 @@ function LiveBadge({ status }) {
   );
 }
 
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-
-function ActivityFeed({ items }) {
-  if (items.length === 0) return <p className="muted">Waiting for activity…</p>;
-  return (
-    <ul className="plain-list activity-list" aria-live="polite">
-      {items.map((item, index) => (
-        <li key={`${item.at}-${index}`}>
-          <Link to={`/documents/${item.document_id}`}>{item.message}</Link>
-          <span className="muted">{timeFormat.format(new Date(item.at))}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function QueryList({ items, empty }) {
   if (items.length === 0) return <p className="muted">{empty}</p>;
   return (
@@ -102,7 +86,7 @@ export default function DashboardPage() {
         <h1>Dashboard</h1>
         <LiveBadge status={live.status} />
       </div>
-      <p className="muted">Last 60 minutes · charts refresh every 10 seconds, trending and activity update live</p>
+      <p className="muted">Last 60 minutes · charts refresh every 10 seconds, trending searches update live</p>
 
       {!data ? (
         <div className="grid-3">
@@ -131,10 +115,6 @@ export default function DashboardPage() {
             <section className="card">
               <h3>Trending searches</h3>
               <QueryList items={live.trending ?? data.top_queries} empty="Nothing yet." />
-            </section>
-            <section className="card">
-              <h3>Live activity</h3>
-              <ActivityFeed items={live.activity} />
             </section>
             <section className="card">
               <h3>Top bookmarked tags (7 days)</h3>
